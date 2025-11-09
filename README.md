@@ -6,8 +6,8 @@ Agentic AI that turns a folder of research papers (PDF/TXT/DOCX) into a clear, c
 Ingest your papers → build a local vector index → run a 5‑stage agent chain (Researcher → Reviewer → Synthesizer → Questioner → Formatter) → output an executive summary, key findings, critiques, hypotheses, and prioritized research questions with source citations.
 
 ## Why It Helps
-Manual literature review is slow and easy to miss patterns. This project accelerates early research exploration by:
-- Extracting methods, results, limitations
+Manual literature review is slow and prone to missing patterns. This project accelerates early research exploration by:
+- Extracting methods, results, and limitations
 - Highlighting strengths, weaknesses, biases
 - Connecting findings across papers
 - Surfacing gaps & generating testable hypotheses
@@ -23,11 +23,11 @@ Manual literature review is slow and easy to miss patterns. This project acceler
 
 ## Quick Start (Backend)
 ```bash
-# 1. Create venv (macOS / zsh)
+# 1. Create venv
 python3 -m venv .venv && source .venv/bin/activate
 
-# 2. Install Python deps (filename currently has a space)
-pip install -r "requirements .txt"  # or rename to requirements.txt first
+# 2. Install Python deps
+pip install -r "requirements.txt" 
 
 # 3. Add your Gemini API key in .env
 printf "GOOGLE_API_KEY=your_key_here" > .env
@@ -43,12 +43,10 @@ python src/multi_agent_system.py --query "Comprehensive analysis of the document
 ```
 Report saved to `research_report.txt`.
 
-## Alternative Runs
-- LangGraph orchestrator: `python src/langgraph_multiagent.py`
-- REST API (FastAPI): `uvicorn src.api_server:app --host 0.0.0.0 --port 8000 --reload`
-- RAG Q&A: `python src/rag_pipeline.py --question "What benchmarks are used?" --k 6`
+## Further Docs
+- see `docs/SETUP.md` and `docs/TECHNICAL_OVERVIEW.md` for more details
 
-## Agent Roles (Simple)
+## Agent Roles
 | Agent | Purpose |
 |-------|---------|
 | Researcher | Extract key findings & contributions |
@@ -64,24 +62,6 @@ Report saved to `research_report.txt`.
 - `src/langgraph_multiagent.py` – graph orchestration
 - `vector_db/` & `summaries_vector_db/` – persisted Chroma indices
 - `summaries/` – generated paper summaries (txt/json)
-
-## Docs
-- Setup: `docs/SETUP.md`
-- Technical Overview: `docs/TECHNICAL_OVERVIEW.md`
-
-## Troubleshooting (Common)
-- Missing API key: ensure `.env` contains `GOOGLE_API_KEY`.
-- Empty results: verify PDFs exist, then re‑run ingestion.
-- Rebuild from scratch:
-```bash
-rm -rf vector_db summaries_vector_db summaries
-python src/document_processor.py --clear
-```
-
-## Roadmap Ideas
-- Add evaluation / grounding scores
-- Plug in alternative LLMs & embedding models
-- Export to Markdown / HTML / JSON API
 
 ## License
 MIT License © 2025 Muhammad Hassaan Raza. See [LICENSE](./LICENSE).
