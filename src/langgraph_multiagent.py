@@ -79,10 +79,11 @@ class ResearchState(TypedDict):
     error_message: str
     current_step: int
 
+    # Agent collaboration tracking
+    collaboration_log: List[Dict]
 
 
-
-# ---AGENT NODES ---
+# --- AGENT NODES ---
 def researcher_node(state: ResearchState) -> Dict:
     """
     RESEARCHER Agent: Analyzes research papers with citations.
@@ -140,7 +141,7 @@ DOCUMENT SUMMARIES:
 {summaries_context}
 
 SUMMARY SOURCES:
-{chr(10).join([f"[S{i + 1}] {s.get('source', 'Unknown')}" for i, s in enumerate(summary_sources[:10])])}
+{chr(10).join([f"[S{i + 1}] {s.get('source', 'summary')}" for i, s in enumerate(summary_sources[:10])])}
 
 ========================================
 DETAILED CONTEXT:
@@ -203,6 +204,23 @@ Extract 5-7 key findings following the exact format specified in your instructio
             source_copy['type'] = 'detailed'
             all_sources.append(source_copy)
 
+        # Add collaboration log entry
+        collaboration_entry = {
+            "agent": "RESEARCHER",
+            "step": 1,
+            "action": "analyzed_documents",
+            "input": {"sources_count": len(all_sources)},
+            "output": {
+                "findings_count": len(findings),
+                "findings_preview": [f.get('finding', '')[:100] for f in findings[:3]]
+            },
+            "next_agent": "REVIEWER"
+        }
+
+        # Get existing collaboration log
+        existing_log = state.get("collaboration_log", [])
+        updated_log = existing_log + [collaboration_entry]
+
         return {
             "messages": [AIMessage(content=f"RESEARCHER completed with {len(findings)} findings")],
             "researcher_analysis": analysis,
@@ -210,7 +228,8 @@ Extract 5-7 key findings following the exact format specified in your instructio
             "researcher_sources": all_sources,
             "researcher_status": "success",
             "current_step": 1,
-            "workflow_status": "in_progress"
+            "workflow_status": "in_progress",
+            "collaboration_log": updated_log
         }
 
     except Exception as e:
@@ -303,13 +322,35 @@ Identify strengths and weaknesses following the exact format specified."""
 
         logger.info(f"REVIEWER: Found {len(strengths)} strengths, {len(weaknesses)} weaknesses")
 
+        # Add collaboration log entry
+        collaboration_entry = {
+            "agent": "REVIEWER",
+            "step": 2,
+            "action": "critiqued_findings",
+            "input": {
+                "findings_reviewed": len(findings),
+                "previous_agent": "RESEARCHER"
+            },
+            "output": {
+                "strengths_count": len(strengths),
+                "weaknesses_count": len(weaknesses),
+                "strengths_preview": strengths[:2] if strengths else [],
+                "weaknesses_preview": weaknesses[:2] if weaknesses else []
+            },
+            "next_agent": "SYNTHESIZER"
+        }
+
+        existing_log = state.get("collaboration_log", [])
+        updated_log = existing_log + [collaboration_entry]
+
         return {
             "messages": [AIMessage(content="REVIEWER completed critique")],
             "reviewer_critique": critique,
             "reviewer_strengths": strengths,
             "reviewer_weaknesses": weaknesses,
             "reviewer_status": "success",
-            "current_step": 2
+            "current_step": 2,
+            "collaboration_log": updated_log
         }
 
     except Exception as e:
@@ -404,12 +445,32 @@ Generate 3-5 testable hypotheses following the exact format specified."""
 
         logger.info(f"SYNTHESIZER: Generated {len(hypotheses)} hypotheses")
 
+        # Add collaboration log entry
+        collaboration_entry = {
+            "agent": "SYNTHESIZER",
+            "step": 3,
+            "action": "generated_hypotheses",
+            "input": {
+                "findings_count": len(findings),
+                "previous_agents": ["RESEARCHER", "REVIEWER"]
+            },
+            "output": {
+                "hypotheses_count": len(hypotheses),
+                "hypotheses_preview": [h.get('hypothesis', '')[:100] for h in hypotheses[:2]]
+            },
+            "next_agent": "QUESTIONER"
+        }
+
+        existing_log = state.get("collaboration_log", [])
+        updated_log = existing_log + [collaboration_entry]
+
         return {
             "messages": [AIMessage(content="SYNTHESIZER completed synthesis")],
             "synthesizer_synthesis": synthesis,
             "synthesizer_hypotheses": hypotheses,
             "synthesizer_status": "success",
-            "current_step": 3
+            "current_step": 3,
+            "collaboration_log": updated_log
         }
 
     except Exception as e:
@@ -491,12 +552,33 @@ Generate 5-7 important research questions following the exact format specified."
 
         logger.info(f"QUESTIONER: Identified {len(questions)} questions")
 
+        # Add collaboration log entry
+        collaboration_entry = {
+            "agent": "QUESTIONER",
+            "step": 4,
+            "action": "identified_gaps",
+            "input": {
+                "findings_count": len(findings),
+                "hypotheses_count": len(hypotheses),
+                "previous_agents": ["RESEARCHER", "REVIEWER", "SYNTHESIZER"]
+            },
+            "output": {
+                "questions_count": len(questions),
+                "questions_preview": questions[:3] if questions else []
+            },
+            "next_agent": "FORMATTER"
+        }
+
+        existing_log = state.get("collaboration_log", [])
+        updated_log = existing_log + [collaboration_entry]
+
         return {
             "messages": [AIMessage(content="QUESTIONER completed gap analysis")],
             "questioner_gap_analysis": gap_analysis,
             "questioner_questions": questions,
             "questioner_status": "success",
-            "current_step": 4
+            "current_step": 4,
+            "collaboration_log": updated_log
         }
 
     except Exception as e:
@@ -581,12 +663,36 @@ Create a well-structured, comprehensive research report."""
 
         logger.info("FORMATTER: Report compiled successfully")
 
+        # Add collaboration log entry
+        collaboration_entry = {
+            "agent": "FORMATTER",
+            "step": 5,
+            "action": "compiled_report",
+            "input": {
+                "findings_count": len(findings),
+                "strengths_count": len(strengths),
+                "weaknesses_count": len(weaknesses),
+                "hypotheses_count": len(hypotheses),
+                "questions_count": len(questions),
+                "previous_agents": ["RESEARCHER", "REVIEWER", "SYNTHESIZER", "QUESTIONER"]
+            },
+            "output": {
+                "report_length": len(report),
+                "report_preview": report[:200]
+            },
+            "next_agent": None
+        }
+
+        existing_log = state.get("collaboration_log", [])
+        updated_log = existing_log + [collaboration_entry]
+
         return {
             "messages": [AIMessage(content="FORMATTER completed comprehensive report")],
             "final_report": report,
             "formatter_status": "success",
             "workflow_status": "success",
-            "current_step": 5
+            "current_step": 5,
+            "collaboration_log": updated_log
         }
 
     except Exception as e:
@@ -703,7 +809,7 @@ def run_research_analysis(config: Optional[Dict] = None):
         config: Configuration dict with thread_id for checkpointing
 
     Returns:
-        Final state with research report
+        Final state with research report and collaboration log
     """
     graph = create_research_graph()
 
@@ -719,7 +825,8 @@ def run_research_analysis(config: Optional[Dict] = None):
         "synthesizer_status": "",
         "questioner_status": "",
         "formatter_status": "",
-        "error_message": ""
+        "error_message": "",
+        "collaboration_log": []
     }
 
     print(f"\n{'=' * 70}")
@@ -733,6 +840,15 @@ def run_research_analysis(config: Optional[Dict] = None):
         print(f"\n{'=' * 70}")
         print("WORKFLOW COMPLETE")
         print(f"{'=' * 70}")
+
+        print(f"\n{'=' * 70}")
+        print("AGENT COLLABORATION LOG")
+        print(f"{'=' * 70}\n")
+        for log_entry in result.get("collaboration_log", []):
+            print(f"Step {log_entry['step']}: {log_entry['agent']} -> {log_entry['action']}")
+            print(f"  Input: {log_entry['input']}")
+            print(f"  Output: {log_entry['output']}")
+            print(f"  Next: {log_entry['next_agent']}\n")
 
         print(f"\n{'=' * 70}")
         print("FINAL REPORT")
