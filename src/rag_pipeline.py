@@ -4,15 +4,12 @@ Implements Retrieval-Augmented Generation for answering questions using document
 """
 
 import os
-import sys
-from pathlib import Path
-from typing import List, Optional, Dict
+from typing import Optional, Dict
 import logging
 from dotenv import load_dotenv
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
-from langchain_core.documents import Document
 
 # Handle both script execution and module import
 try:
@@ -398,7 +395,6 @@ def main():
         except Exception as e:
             logger.error(f"Error: {str(e)}")
             print(f"Error: {str(e)}\n")
-
 
 if __name__ == "__main__":
     main()

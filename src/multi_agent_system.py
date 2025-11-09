@@ -352,7 +352,6 @@ def main():
     parser.add_argument(
         "--query",
         type=str,
-        required=True,
         help="Research query or topic to analyze"
     )
     parser.add_argument(
@@ -414,6 +413,7 @@ def main():
         sys.exit(1)
     
     # Run workflow
+    args.query = 'provide a comprehensive analysis of the documents'
     workflow_data = system.run_research_workflow(args.query, verbose=True)
     
     # Print summary
