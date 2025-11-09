@@ -43,7 +43,7 @@ python src/multi_agent_system.py --query "Comprehensive analysis of the document
 ```
 Report saved to `research_report.txt`.
 
-## Further Docs
+## Full Setup and Technical Details
 - see `docs/SETUP.md` and `docs/TECHNICAL_OVERVIEW.md` for more details
 
 ## Agent Roles
@@ -65,6 +65,3 @@ Report saved to `research_report.txt`.
 
 ## License
 MIT License © 2025 Muhammad Hassaan Raza. See [LICENSE](./LICENSE).
-
----
-Built for rapid, explainable literature synthesis. Contributions welcome.
