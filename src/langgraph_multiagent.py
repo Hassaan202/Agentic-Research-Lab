@@ -1,6 +1,5 @@
 """
-LangGraph-based Multi-Agent Research System
-Converts the sequential agent pipeline into a graph-based workflow
+Enhanced LangGraph Multi-Agent Research System
 """
 
 import os
@@ -23,6 +22,7 @@ except ImportError:
     sys.path.append(str(Path(__file__).parent))
     from rag_pipeline import RAGPipeline
 
+
 load_dotenv()
 
 logging.basicConfig(
@@ -40,120 +40,133 @@ rag_pipeline = RAGPipeline(
 )
 
 
-
-# --- STATE SCHEMA ---
+# --- ENHANCED STATE SCHEMA ---
 class ResearchState(TypedDict):
-    """State for the multi-agent research workflow"""
+    """Enhanced state with reasoning traces and verification"""
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
     # Researcher outputs
     researcher_analysis: str
-    researcher_findings: List[str]
+    researcher_findings: List[Dict]  # Changed to Dict for citations
     researcher_sources: List[Dict]
     researcher_status: str
+    researcher_reasoning: str  # NEW: Reasoning trace
+    researcher_confidence: float  # NEW: Confidence score
 
     # Reviewer outputs
     reviewer_critique: str
-    reviewer_strengths: List[str]
-    reviewer_weaknesses: List[str]
+    reviewer_strengths: List[Dict]  # Changed to Dict for evidence
+    reviewer_weaknesses: List[Dict]  # Changed to Dict for evidence
     reviewer_status: str
+    reviewer_reasoning: str  # NEW: Reasoning trace
+    reviewer_questions_to_researcher: List[str]  # NEW: Inter-agent questions
 
     # Synthesizer outputs
     synthesizer_synthesis: str
-    synthesizer_hypotheses: List[str]
-    synthesizer_insights: List[str]
+    synthesizer_hypotheses: List[Dict]  # Changed to Dict for evidence
+    synthesizer_insights: List[Dict]  # Changed to Dict for evidence
     synthesizer_status: str
+    synthesizer_reasoning: str  # NEW: Reasoning trace
+    synthesizer_novel_connections: List[Dict]  # NEW: Novel insights
 
     # Questioner outputs
     questioner_gap_analysis: str
-    questioner_gaps: List[str]
-    questioner_questions: List[str]
+    questioner_gaps: List[Dict]  # Changed to Dict for context
+    questioner_questions: List[Dict]  # Changed to Dict for reasoning
     questioner_status: str
+    questioner_reasoning: str  # NEW: Reasoning trace
 
     # Formatter outputs
     final_report: str
     formatter_status: str
+    reasoning_graph: Dict  # NEW: Agent conversation flow
 
     # Workflow metadata
     workflow_status: str
     error_message: str
     current_step: int
+    agent_interactions: List[Dict]  # NEW: Track agent conversations
+    verification_scores: Dict  # NEW: Track verification metrics
 
 
 
 
-# --- RAG TOOL ---
-@tool
-def retrieve_context_tool(query: str, k: int = 8) -> str:
-    """
-    Retrieve relevant context from the RAG pipeline.
-
-    Args:
-        query: Search query for document retrieval
-        k: Number of documents to retrieve
-
-    Returns:
-        Retrieved context as string
-    """
-    result = rag_pipeline.answer_question(query, k=k, return_sources=True)
-    return result['answer']
-
-
-
-
-# --- AGENT NODES ---
+# ---AGENT NODES ---
 def researcher_node(state: ResearchState) -> Dict:
     """
-    RESEARCHER Agent: Analyzes research papers and extracts key findings.
+    RESEARCHER Agent: Analyzes research papers with explicit reasoning.
     """
-    logger.info("RESEARCHER: Starting analysis of research papers...")
+    logger.info("RESEARCHER: Starting analysis with reasoning traces...")
 
-    # Retrieve context from RAG
+    # Retrieve context from RAG with more documents for better coverage
     context_result = rag_pipeline.answer_question(
-        "provide a comprehensive analysis of the documents",
-        k=10,
+        "provide a comprehensive analysis of the documents including key findings, methodologies, and conclusions",
+        k=10,  # Increased for better coverage
         return_sources=True
     )
     context_text = context_result['answer']
     sources = context_result.get('sources', [])
 
-    system_prompt = """You are a meticulous research analyst. Your task is to analyze research papers and extract key findings, methodologies, and conclusions.
+    system_prompt = """You are a meticulous research analyst with expertise in critical thinking and evidence-based reasoning.
 
-CRITICAL RULES:
-1. ONLY use information from the provided context - DO NOT hallucinate or invent facts
-2. Cite specific sources for every finding you mention
-3. Extract key methodologies, results, and conclusions
-4. Identify the main contributions of each paper
-5. Note any limitations or gaps mentioned in the papers
-6. Be precise and factual - avoid speculation
+ CRITICAL RULES FOR REASONING:
+1. ALWAYS cite specific sources with page numbers for EVERY claim
+2. Provide explicit reasoning chains: "Because X (source), we can infer Y"
+3. Rate your confidence (0-100%) for each major finding
+4. Distinguish between: established facts, probable inferences, and speculative connections
+5. Flag any contradictions or uncertainties in the literature
+6. Note when evidence is insufficient or when claims need verification
 
-Format your analysis clearly with sections for:
-- Key Findings
-- Methodologies
-- Conclusions
-- Limitations
+STRUCTURED OUTPUT FORMAT:
+For each finding, provide:
+- Finding: [Clear statement]
+- Evidence: [Specific citation with page/section]
+- Reasoning: [Why this evidence supports the finding]
+- Confidence: [0-100%]
+- Limitations: [What could undermine this finding]
+
+Your analysis should be:
+- Methodical: Build arguments step-by-step
+- Transparent: Show your reasoning process
+- Verifiable: Every claim traceable to sources
+- Honest: Acknowledge gaps and uncertainties
 """
 
-    user_prompt = f"""Analyze the following research papers:
+    user_prompt = f"""Analyze the research papers with explicit reasoning:
 
 CONTEXT FROM DOCUMENTS:
 {context_text}
 
-SOURCES:
-{chr(10).join([f"- {s.get('source', 'Unknown')} (Page: {s.get('page', 'N/A')})" for s in sources[:5]])}
+AVAILABLE SOURCES:
+{chr(10).join([f"[{i+1}] {s.get('source', 'Unknown')} (Page: {s.get('page', 'N/A')})" for i, s in enumerate(sources[:10])])}
 
-Please provide a detailed analysis with:
-1. Key findings from the papers
-2. Methodologies used
-3. Main conclusions
-4. Any limitations or gaps mentioned
+ANALYSIS REQUIREMENTS:
+1. Extract 5-7 key findings with:
+   - Specific evidence (cite source number)
+   - Reasoning chain
+   - Confidence score
+   
+2. Identify methodologies used:
+   - What approaches were taken
+   - Why they were chosen
+   - Limitations of each method
+   
+3. Draw conclusions:
+   - What can we reliably conclude?
+   - What remains uncertain?
+   - What contradictions exist?
 
-Remember: Only use information from the provided context. Cite sources for each finding."""
+4. Provide your overall reasoning process:
+   - How you evaluated the evidence
+   - Why you prioritized certain findings
+   - What assumptions you made
+
+Remember: Show your work. Every claim needs a source and reasoning."""
 
     try:
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
-            temperature=0.2
+            temperature=0.1  # Lower for more factual accuracy
         )
 
         messages = [
@@ -163,21 +176,63 @@ Remember: Only use information from the provided context. Cite sources for each 
         response = llm.invoke(messages)
         analysis = response.content
 
-        # Extract findings (simplified)
-        findings = [line.strip() for line in analysis.split('\n')
-                    if line.strip() and (line.strip().startswith('-') or
-                                         (line.strip() and line.strip()[0].isdigit()))][:10]
+        # Extract structured findings with evidence
+        findings = []
+        confidence_scores = []
+        reasoning_trace = []
 
-        logger.info(f"RESEARCHER: Analysis complete with {len(findings)} findings")
+        lines = analysis.split('\n')
+        current_finding = {}
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith('- Finding:') or line.startswith('Finding:'):
+                if current_finding:
+                    findings.append(current_finding)
+                current_finding = {'finding': line.split(':', 1)[1].strip()}
+            elif line.startswith('- Evidence:') or line.startswith('Evidence:'):
+                current_finding['evidence'] = line.split(':', 1)[1].strip()
+            elif line.startswith('- Reasoning:') or line.startswith('Reasoning:'):
+                current_finding['reasoning'] = line.split(':', 1)[1].strip()
+                reasoning_trace.append(current_finding['reasoning'])
+            elif line.startswith('- Confidence:') or line.startswith('Confidence:'):
+                conf_str = line.split(':', 1)[1].strip().rstrip('%')
+                try:
+                    conf = float(conf_str)
+                    current_finding['confidence'] = conf
+                    confidence_scores.append(conf)
+                except:
+                    current_finding['confidence'] = 70.0
+            elif line.startswith('- Limitations:') or line.startswith('Limitations:'):
+                current_finding['limitations'] = line.split(':', 1)[1].strip()
+
+        if current_finding:
+            findings.append(current_finding)
+
+        avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 70.0
+
+        logger.info(f"RESEARCHER: Analysis complete with {len(findings)} findings (avg confidence: {avg_confidence:.1f}%)")
+
+        # Create interaction record
+        interaction = {
+            "from": "RESEARCHER",
+            "to": "ALL",
+            "type": "analysis",
+            "content": f"Completed analysis with {len(findings)} findings",
+            "timestamp": "step_1"
+        }
 
         return {
-            "messages": [AIMessage(content=f"RESEARCHER completed analysis")],
+            "messages": [AIMessage(content=f"RESEARCHER completed analysis with {len(findings)} findings")],
             "researcher_analysis": analysis,
-            "researcher_findings": findings,
+            "researcher_findings": findings[:10],
             "researcher_sources": sources,
             "researcher_status": "success",
+            "researcher_reasoning": "\n".join(reasoning_trace),
+            "researcher_confidence": avg_confidence,
             "current_step": 1,
-            "workflow_status": "in_progress"
+            "workflow_status": "in_progress",
+            "agent_interactions": [interaction]
         }
 
     except Exception as e:
@@ -192,9 +247,9 @@ Remember: Only use information from the provided context. Cite sources for each 
 
 def reviewer_node(state: ResearchState) -> Dict:
     """
-    REVIEWER Agent: Critiques findings and identifies strengths/weaknesses.
+    REVIEWER Agent: Critical evaluation with counter-arguments.
     """
-    logger.info("REVIEWER: Starting critique of findings...")
+    logger.info("REVIEWER: Starting critical review...")
 
     if state.get("researcher_status") != "success":
         return {
@@ -204,52 +259,65 @@ def reviewer_node(state: ResearchState) -> Dict:
 
     researcher_analysis = state["researcher_analysis"]
     findings = state["researcher_findings"]
+    researcher_confidence = state.get("researcher_confidence", 70.0)
 
-    # Retrieve additional context for critique
+    # Retrieve additional context specifically for critique
     context_result = rag_pipeline.answer_question(
-        "methodology limitations weaknesses",
-        k=6,
+        "methodology limitations weaknesses contradictions alternative interpretations",
+        k=8,
         return_sources=True
     )
     additional_context = context_result.get('answer', 'No additional context available')
 
-    system_prompt = """You are a critical research reviewer. Your task is to evaluate research findings, identify strengths, weaknesses, and potential biases.
+    system_prompt = """You are a critical research reviewer specializing in identifying flaws, biases, and alternative interpretations.
 
-CRITICAL RULES:
-1. Base your critique ONLY on the provided context and findings
-2. Identify methodological strengths and weaknesses
-3. Look for potential biases or limitations
-4. Check for consistency and logical coherence
-5. Identify any gaps in the analysis
-6. Be constructive and specific - cite sources when possible
-7. DO NOT make up criticisms that aren't supported by the context
+YOUR MISSION:
+1. Challenge every major claim - what's the counter-evidence?
+2. Identify methodological weaknesses
+3. Question assumptions and logical leaps
+4. Propose alternative interpretations
+5. Generate tough questions for the researcher
 
-Format your critique with:
-- Strengths
-- Weaknesses
-- Potential Biases
-- Gaps or Missing Information
-"""
+CRITICAL THINKING FRAMEWORK:
+- For each finding: "What could disprove this?"
+- For methods: "What biases could this introduce?"
+- For conclusions: "What alternative explanations exist?"
+- For evidence: "Is this cherry-picked? What's missing?"
 
-    user_prompt = f"""Review and critique the following research analysis:
+OUTPUT STRUCTURE:
+Strengths: [What's genuinely solid, with evidence]
+Weaknesses: [Specific flaws, with reasoning]
+Alternative Interpretations: [Other ways to read the evidence]
+Questions for Researcher: [Tough questions to probe gaps]
+Confidence Assessment: [Is the researcher over/under confident?]
+
+Be constructive but rigorous. Your job is to strengthen the analysis through critique."""
+
+    user_prompt = f"""Critically review this research analysis:
 
 RESEARCHER'S ANALYSIS:
 {researcher_analysis}
 
 KEY FINDINGS:
-{chr(10).join([f"- {f}" for f in findings[:10]])}
+{chr(10).join([f"- {f.get('finding', 'N/A')} (Confidence: {f.get('confidence', 'N/A')}%)" for f in findings[:10]])}
 
-ADDITIONAL CONTEXT:
+RESEARCHER'S CONFIDENCE: {researcher_confidence:.1f}%
+
+ADDITIONAL CONTEXT FOR CRITIQUE:
 {additional_context}
 
-Please provide a thorough critique focusing on:
-1. Strengths of the research and analysis
-2. Weaknesses or limitations
-3. Potential biases or methodological concerns
-4. Gaps in the analysis or missing information
-5. Consistency and logical coherence
+YOUR TASKS:
+1. Identify 3-5 strengths (what's well-supported)
+2. Identify 3-5 weaknesses (what's questionable)
+3. Propose 2-3 alternative interpretations
+4. Generate 3-5 tough questions for the researcher
+5. Assess if confidence levels are justified
 
-Remember: Base your critique on the actual content. Do not invent criticisms."""
+For each point, provide:
+- The claim being evaluated
+- Your reasoning
+- Supporting evidence or counter-evidence
+- Confidence in your critique"""
 
     try:
         llm = ChatGoogleGenerativeAI(
@@ -264,28 +332,56 @@ Remember: Base your critique on the actual content. Do not invent criticisms."""
         response = llm.invoke(messages)
         critique = response.content
 
-        # Extract strengths and weaknesses (simplified)
+        # Extract structured strengths and weaknesses
         lines = critique.split('\n')
         strengths = []
         weaknesses = []
+        questions = []
+        reasoning_trace = []
 
-        in_strengths = False
-        in_weaknesses = False
+        current_section = None
+        current_item = {}
 
         for line in lines:
-            if 'strength' in line.lower():
-                in_strengths = True
-                in_weaknesses = False
-            elif 'weakness' in line.lower():
-                in_weaknesses = True
-                in_strengths = False
-            elif line.strip() and line.strip().startswith('-'):
-                if in_strengths:
-                    strengths.append(line.strip())
-                elif in_weaknesses:
-                    weaknesses.append(line.strip())
+            line = line.strip()
 
-        logger.info("REVIEWER: Critique complete")
+            if 'strength' in line.lower() and ':' in line:
+                current_section = 'strength'
+            elif 'weakness' in line.lower() and ':' in line:
+                current_section = 'weakness'
+            elif '?' in line and len(line) > 20:
+                questions.append(line)
+            elif line.startswith('-') and current_section:
+                if current_item and 'claim' in current_item:
+                    if current_section == 'strength':
+                        strengths.append(current_item)
+                    elif current_section == 'weakness':
+                        weaknesses.append(current_item)
+                    reasoning_trace.append(current_item.get('reasoning', ''))
+
+                current_item = {'claim': line[1:].strip()}
+            elif line.lower().startswith('reasoning:') and current_item:
+                current_item['reasoning'] = line.split(':', 1)[1].strip()
+            elif line.lower().startswith('evidence:') and current_item:
+                current_item['evidence'] = line.split(':', 1)[1].strip()
+
+        if current_item and 'claim' in current_item:
+            if current_section == 'strength':
+                strengths.append(current_item)
+            elif current_section == 'weakness':
+                weaknesses.append(current_item)
+
+        logger.info(f"REVIEWER: Found {len(strengths)} strengths, {len(weaknesses)} weaknesses, {len(questions)} questions")
+
+        # Create interaction record
+        interaction = {
+            "from": "REVIEWER",
+            "to": "RESEARCHER",
+            "type": "critique",
+            "content": f"Identified {len(weaknesses)} weaknesses and {len(questions)} questions",
+            "questions": questions[:5],
+            "timestamp": "step_2"
+        }
 
         return {
             "messages": [AIMessage(content="REVIEWER completed critique")],
@@ -293,7 +389,10 @@ Remember: Base your critique on the actual content. Do not invent criticisms."""
             "reviewer_strengths": strengths[:5],
             "reviewer_weaknesses": weaknesses[:5],
             "reviewer_status": "success",
-            "current_step": 2
+            "reviewer_reasoning": "\n".join(reasoning_trace),
+            "reviewer_questions_to_researcher": questions[:5],
+            "current_step": 2,
+            "agent_interactions": state.get("agent_interactions", []) + [interaction]
         }
 
     except Exception as e:
@@ -308,9 +407,9 @@ Remember: Base your critique on the actual content. Do not invent criticisms."""
 
 def synthesizer_node(state: ResearchState) -> Dict:
     """
-    SYNTHESIZER Agent: Synthesizes insights and generates hypotheses.
+    SYNTHESIZER Agent: Creates novel connections and testable hypotheses.
     """
-    logger.info("SYNTHESIZER: Starting synthesis...")
+    logger.info("SYNTHESIZER: Generating novel insights...")
 
     if state.get("reviewer_status") != "success":
         return {
@@ -319,66 +418,88 @@ def synthesizer_node(state: ResearchState) -> Dict:
         }
 
     researcher_analysis = state["researcher_analysis"]
+    findings = state["researcher_findings"]
     critique = state["reviewer_critique"]
     strengths = state["reviewer_strengths"]
     weaknesses = state["reviewer_weaknesses"]
 
-    # Retrieve context for synthesis
+    # Retrieve context for synthesis and hypothesis generation
     context_result = rag_pipeline.answer_question(
-        "hypotheses research questions future work",
-        k=6,
+        "hypotheses research questions future directions novel applications cross-domain insights",
+        k=8,
         return_sources=True
     )
     additional_context = context_result.get('answer', 'No additional context available')
 
-    system_prompt = """You are a research synthesizer. Your task is to combine findings and critiques to generate new insights and testable hypotheses.
+    system_prompt = """You are a research synthesizer who identifies novel patterns and generates breakthrough hypotheses.
 
-CRITICAL RULES:
-1. Base hypotheses ONLY on the provided findings and context
-2. Generate testable, specific hypotheses
-3. Connect findings from different sources
-4. Identify patterns and relationships
-5. Propose actionable research directions
-6. DO NOT create hypotheses that aren't supported by the evidence
-7. Clearly state what evidence supports each hypothesis
+YOUR UNIQUE ROLE:
+1. Find NON-OBVIOUS connections between findings
+2. Generate TESTABLE hypotheses (not vague ideas)
+3. Bridge different domains or methods
+4. Identify emergent patterns that weren't explicit
+5. Propose concrete next steps
 
-Format your synthesis with:
-- Key Insights
-- Patterns and Relationships
-- Testable Hypotheses
-- Research Directions
-"""
+SYNTHESIS FRAMEWORK:
+- Cross-pollination: Connect ideas that weren't linked before
+- Elevation: What higher-level principle emerges?
+- Inversion: What if we flip the assumption?
+- Application: How could this extend to new domains?
 
-    user_prompt = f"""Synthesize the following research analysis and critique:
+HYPOTHESIS REQUIREMENTS:
+Each hypothesis must have:
+- Clear statement: "If X, then Y"
+- Supporting evidence: Why this is plausible
+- Testability: How to verify/falsify
+- Novelty: Why this isn't obvious
+- Impact: Why this matters
+
+REASONING TRANSPARENCY:
+Show your synthesis process:
+1. What patterns did you notice?
+2. Why are they significant?
+3. What assumptions are you making?
+4. What would need to be true for your hypothesis to hold?"""
+
+    user_prompt = f"""Synthesize findings into novel insights:
 
 RESEARCHER'S FINDINGS:
-{researcher_analysis}
+{chr(10).join([f"- {f.get('finding', 'N/A')} [Confidence: {f.get('confidence', 'N/A')}%]" for f in findings[:10]])}
 
 REVIEWER'S CRITIQUE:
-{critique}
-
-STRENGTHS IDENTIFIED:
-{chr(10).join([f"- {s}" for s in strengths[:5]])}
-
-WEAKNESSES IDENTIFIED:
-{chr(10).join([f"- {w}" for w in weaknesses[:5]])}
+Strengths: {chr(10).join([s.get('claim', 'N/A') for s in strengths[:3]])}
+Weaknesses: {chr(10).join([w.get('claim', 'N/A') for w in weaknesses[:3]])}
 
 ADDITIONAL CONTEXT:
 {additional_context}
 
-Please synthesize this information to:
-1. Identify key insights and patterns
-2. Connect findings from different sources
-3. Generate 3-5 testable hypotheses
-4. Propose specific research directions
-5. Explain the evidence base for each hypothesis
+YOUR TASKS:
+1. Identify 3-4 NOVEL insights (not just summaries)
+   - What patterns emerge across findings?
+   - What connections weren't explicit?
+   
+2. Generate 3-5 TESTABLE hypotheses:
+   - Clear if-then statements
+   - Evidence base
+   - How to test
+   - Why it's novel
+   
+3. Propose concrete research directions:
+   - What experiments to run?
+   - What data to collect?
+   - What collaborations to pursue?
 
-Remember: Hypotheses must be grounded in the actual findings. Be specific and testable."""
+4. Show your reasoning:
+   - How did you connect the dots?
+   - What assumptions are you making?
+   - What could invalidate your synthesis?
+
+Focus on NOVELTY and TESTABILITY, not just summarization."""
 
     try:
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
-            temperature=0.4
+            temperature=0.5  # Higher for creative synthesis
         )
 
         messages = [
@@ -388,20 +509,68 @@ Remember: Hypotheses must be grounded in the actual findings. Be specific and te
         response = llm.invoke(messages)
         synthesis = response.content
 
-        # Extract hypotheses and insights
+        # Extract structured hypotheses and insights
         hypotheses = []
         insights = []
+        novel_connections = []
+        reasoning_trace = []
         lines = synthesis.split('\n')
 
-        for line in lines:
-            if 'hypothesis' in line.lower() or 'h1' in line.lower() or 'h2' in line.lower():
-                if line.strip() and len(line.strip()) > 20:
-                    hypotheses.append(line.strip())
-            elif ('insight' in line.lower() or 'pattern' in line.lower()) and line.strip():
-                if len(line.strip()) > 30:
-                    insights.append(line.strip())
+        current_item = {}
+        current_type = None
 
-        logger.info(f"SYNTHESIZER: Generated {len(hypotheses)} hypotheses")
+        for line in lines:
+            line = line.strip()
+
+            if 'hypothesis' in line.lower() and (':' in line or line.endswith('hypothesis')):
+                if current_item and current_type == 'hypothesis':
+                    hypotheses.append(current_item)
+                    reasoning_trace.append(current_item.get('reasoning', ''))
+                current_item = {}
+                current_type = 'hypothesis'
+            elif 'insight' in line.lower() and (':' in line or line.endswith('insight')):
+                if current_item and current_type == 'insight':
+                    insights.append(current_item)
+                current_item = {}
+                current_type = 'insight'
+            elif line.startswith('-') and current_type:
+                if 'statement' not in current_item:
+                    current_item['statement'] = line[1:].strip()
+            elif line.lower().startswith('evidence:') and current_item:
+                current_item['evidence'] = line.split(':', 1)[1].strip()
+            elif line.lower().startswith('testability:') and current_item:
+                current_item['testability'] = line.split(':', 1)[1].strip()
+            elif line.lower().startswith('novelty:') and current_item:
+                current_item['novelty'] = line.split(':', 1)[1].strip()
+            elif line.lower().startswith('reasoning:') and current_item:
+                current_item['reasoning'] = line.split(':', 1)[1].strip()
+
+        if current_item and current_type:
+            if current_type == 'hypothesis':
+                hypotheses.append(current_item)
+            elif current_type == 'insight':
+                insights.append(current_item)
+
+        # Extract novel connections
+        for i, h in enumerate(hypotheses):
+            if h.get('novelty'):
+                novel_connections.append({
+                    'connection': h.get('statement', ''),
+                    'why_novel': h.get('novelty', ''),
+                    'evidence': h.get('evidence', '')
+                })
+
+        logger.info(f"SYNTHESIZER: Generated {len(hypotheses)} hypotheses, {len(insights)} insights")
+
+        # Create interaction record
+        interaction = {
+            "from": "SYNTHESIZER",
+            "to": "ALL",
+            "type": "synthesis",
+            "content": f"Generated {len(hypotheses)} novel hypotheses",
+            "novel_contributions": len(novel_connections),
+            "timestamp": "step_3"
+        }
 
         return {
             "messages": [AIMessage(content="SYNTHESIZER completed synthesis")],
@@ -409,7 +578,10 @@ Remember: Hypotheses must be grounded in the actual findings. Be specific and te
             "synthesizer_hypotheses": hypotheses[:5],
             "synthesizer_insights": insights[:5],
             "synthesizer_status": "success",
-            "current_step": 3
+            "synthesizer_reasoning": "\n".join(reasoning_trace),
+            "synthesizer_novel_connections": novel_connections[:5],
+            "current_step": 3,
+            "agent_interactions": state.get("agent_interactions", []) + [interaction]
         }
 
     except Exception as e:
@@ -424,9 +596,9 @@ Remember: Hypotheses must be grounded in the actual findings. Be specific and te
 
 def questioner_node(state: ResearchState) -> Dict:
     """
-    QUESTIONER Agent: Identifies gaps and generates follow-up questions.
+    QUESTIONER Agent: Identifies critical gaps and generates research questions.
     """
-    logger.info("QUESTIONER: Identifying gaps and generating questions...")
+    logger.info("QUESTIONER: Identifying gaps and questions...")
 
     if state.get("synthesizer_status") != "success":
         return {
@@ -437,61 +609,81 @@ def questioner_node(state: ResearchState) -> Dict:
     synthesis = state["synthesizer_synthesis"]
     hypotheses = state["synthesizer_hypotheses"]
     insights = state["synthesizer_insights"]
-    researcher_analysis = state["researcher_analysis"]
-    critique = state["reviewer_critique"]
+    reviewer_questions = state.get("reviewer_questions_to_researcher", [])
 
     # Retrieve context for gap identification
     context_result = rag_pipeline.answer_question(
-        "research gaps limitations future work",
-        k=5,
+        "research gaps open problems limitations unresolved questions future work",
+        k=6,
         return_sources=True
     )
     additional_context = context_result.get('answer', 'No additional context available')
 
-    system_prompt = """You are a research questioner. Your task is to identify knowledge gaps and generate critical follow-up questions.
+    system_prompt = """You are a research questioner who identifies critical gaps and formulates powerful research questions.
 
-CRITICAL RULES:
-1. Identify gaps based on the actual analysis and synthesis provided
-2. Generate specific, answerable research questions
-3. Focus on gaps that are evident from the research
-4. Prioritize questions that would advance the field
-5. Ensure questions are grounded in the existing research
-6. DO NOT create questions about topics not related to the research
+YOUR EXPERTISE:
+1. Spot what's MISSING (not just what's there)
+2. Identify contradictions that need resolution
+3. Find assumptions that need testing
+4. Generate questions that advance the field
 
-Format your output with:
-- Knowledge Gaps
-- Critical Questions
-- Research Priorities
-"""
+QUESTION QUALITY CRITERIA:
+- Specific: Clear what needs to be investigated
+- Answerable: Feasible to address empirically
+- Important: Would matter if answered
+- Novel: Not already well-studied
+- Clear: No ambiguity in what's being asked
 
-    user_prompt = f"""Identify gaps and generate questions based on the following research analysis:
+GAP ANALYSIS FRAMEWORK:
+- Empirical gaps: What data is missing?
+- Methodological gaps: What tools don't exist?
+- Theoretical gaps: What explanations are lacking?
+- Application gaps: Where hasn't this been tried?
 
-SYNTHESIS AND HYPOTHESES:
-{synthesis}
+For each question, provide:
+- The question itself
+- Why it matters
+- What gap it addresses
+- How it could be approached
+- What impact answering it would have"""
 
-HYPOTHESES GENERATED:
-{chr(10).join([f"- {h}" for h in hypotheses[:5]])}
+    user_prompt = f"""Identify critical gaps and generate research questions:
+
+SYNTHESIZED HYPOTHESES:
+{chr(10).join([f"- {h.get('statement', 'N/A')}" for h in hypotheses[:5]])}
 
 KEY INSIGHTS:
-{chr(10).join([f"- {i}" for i in insights[:5]])}
+{chr(10).join([f"- {i.get('statement', 'N/A')}" for i in insights[:5]])}
 
-RESEARCHER'S ANALYSIS:
-{researcher_analysis[:500]}...
-
-REVIEWER'S CRITIQUE:
-{critique[:500]}...
+REVIEWER'S UNANSWERED QUESTIONS:
+{chr(10).join([f"- {q}" for q in reviewer_questions[:5]])}
 
 ADDITIONAL CONTEXT:
 {additional_context}
 
-Please identify:
-1. Knowledge gaps in the current research
-2. Unanswered questions that emerged
-3. Critical follow-up questions (5-7 questions)
-4. Research priorities for future work
-5. Areas needing further investigation
+YOUR TASKS:
+1. Identify 3-5 critical knowledge gaps:
+   - What's missing from current research?
+   - What contradictions need resolution?
+   - What assumptions need testing?
 
-Remember: Questions should be specific and answerable. Base gaps on actual limitations identified."""
+2. Generate 5-7 powerful research questions:
+   - Each must be specific and answerable
+   - Each must address an important gap
+   - Prioritize questions by potential impact
+
+3. For top 3 questions, provide:
+   - Why this question matters
+   - What gap it addresses
+   - Suggested approach to answer it
+   - Expected impact if answered
+
+4. Show your reasoning:
+   - How did you identify these gaps?
+   - Why these questions over others?
+   - What assumptions are you making about importance?
+
+Focus on questions that would genuinely advance understanding."""
 
     try:
         llm = ChatGoogleGenerativeAI(
@@ -506,18 +698,59 @@ Remember: Questions should be specific and answerable. Base gaps on actual limit
         response = llm.invoke(messages)
         gap_analysis = response.content
 
-        # Extract gaps and questions
+        # Extract structured gaps and questions
         gaps = []
         questions = []
+        reasoning_trace = []
         lines = gap_analysis.split('\n')
 
-        for line in lines:
-            if 'gap' in line.lower() and line.strip() and len(line.strip()) > 20:
-                gaps.append(line.strip())
-            elif '?' in line and line.strip() and len(line.strip()) > 10:
-                questions.append(line.strip())
+        current_item = {}
+        current_type = None
 
-        logger.info(f"QUESTIONER: Identified {len(questions)} research questions")
+        for line in lines:
+            line = line.strip()
+
+            if 'gap' in line.lower() and ':' in line and len(line) > 20:
+                if current_item and current_type == 'gap':
+                    gaps.append(current_item)
+                current_item = {'gap': line.split(':', 1)[1].strip() if ':' in line else line}
+                current_type = 'gap'
+            elif '?' in line and len(line) > 15:
+                if current_item and current_type == 'question':
+                    questions.append(current_item)
+                    reasoning_trace.append(current_item.get('reasoning', ''))
+                current_item = {'question': line}
+                current_type = 'question'
+            elif line.lower().startswith('why:') or line.lower().startswith('importance:'):
+                if current_item:
+                    current_item['importance'] = line.split(':', 1)[1].strip()
+            elif line.lower().startswith('gap addressed:'):
+                if current_item:
+                    current_item['gap_addressed'] = line.split(':', 1)[1].strip()
+            elif line.lower().startswith('approach:'):
+                if current_item:
+                    current_item['approach'] = line.split(':', 1)[1].strip()
+            elif line.lower().startswith('reasoning:'):
+                if current_item:
+                    current_item['reasoning'] = line.split(':', 1)[1].strip()
+
+        if current_item:
+            if current_type == 'gap':
+                gaps.append(current_item)
+            elif current_type == 'question':
+                questions.append(current_item)
+
+        logger.info(f"QUESTIONER: Identified {len(gaps)} gaps, {len(questions)} questions")
+
+        # Create interaction record
+        interaction = {
+            "from": "QUESTIONER",
+            "to": "ALL",
+            "type": "gap_analysis",
+            "content": f"Identified {len(gaps)} gaps and {len(questions)} research questions",
+            "priority_questions": [q.get('question', '') for q in questions[:3]],
+            "timestamp": "step_4"
+        }
 
         return {
             "messages": [AIMessage(content="QUESTIONER completed gap analysis")],
@@ -525,7 +758,9 @@ Remember: Questions should be specific and answerable. Base gaps on actual limit
             "questioner_gaps": gaps[:5],
             "questioner_questions": questions[:7],
             "questioner_status": "success",
-            "current_step": 4
+            "questioner_reasoning": "\n".join(reasoning_trace),
+            "current_step": 4,
+            "agent_interactions": state.get("agent_interactions", []) + [interaction]
         }
 
     except Exception as e:
@@ -540,9 +775,9 @@ Remember: Questions should be specific and answerable. Base gaps on actual limit
 
 def formatter_node(state: ResearchState) -> Dict:
     """
-    FORMATTER Agent: Compiles the final research report.
+    FORMATTER Agent: Compiles comprehensive report with reasoning traces.
     """
-    logger.info("FORMATTER: Compiling final report...")
+    logger.info("FORMATTER: Compiling final report with reasoning...")
 
     if state.get("questioner_status") != "success":
         return {
@@ -550,65 +785,112 @@ def formatter_node(state: ResearchState) -> Dict:
             "error_message": "Questioner agent did not complete successfully"
         }
 
-    researcher_analysis = state["researcher_analysis"]
-    critique = state["reviewer_critique"]
-    synthesis = state["synthesizer_synthesis"]
+    # Gather all data
+    findings = state["researcher_findings"]
+    researcher_reasoning = state.get("researcher_reasoning", "")
+    researcher_confidence = state.get("researcher_confidence", 0)
+
+    strengths = state["reviewer_strengths"]
+    weaknesses = state["reviewer_weaknesses"]
+    reviewer_reasoning = state.get("reviewer_reasoning", "")
+    reviewer_questions = state.get("reviewer_questions_to_researcher", [])
+
     hypotheses = state["synthesizer_hypotheses"]
-    gap_analysis = state["questioner_gap_analysis"]
+    insights = state["synthesizer_insights"]
+    synthesizer_reasoning = state.get("synthesizer_reasoning", "")
+    novel_connections = state.get("synthesizer_novel_connections", [])
+
+    gaps = state["questioner_gaps"]
     questions = state["questioner_questions"]
+    questioner_reasoning = state.get("questioner_reasoning", "")
+
     sources = state["researcher_sources"]
+    agent_interactions = state.get("agent_interactions", [])
 
-    system_prompt = """You are a research report formatter. Your task is to compile a comprehensive, well-structured research report from multiple agent analyses.
+    system_prompt = """You are a research report compiler specializing in transparent, verifiable documentation.
 
-CRITICAL RULES:
-1. Organize information clearly and logically
-2. Include all key findings, critiques, hypotheses, and questions
-3. Maintain accuracy - only include information from the provided analyses
-4. Use proper citations and source references
-5. Create a professional, readable format
-6. Include executive summary and detailed sections
-7. DO NOT add information that wasn't in the original analyses
+YOUR MISSION:
+Create a comprehensive research report that:
+1. Presents findings with full reasoning traces
+2. Shows how agents collaborated and challenged each other
+3. Makes all conclusions verifiable (with citations)
+4. Highlights novel contributions clearly
+5. Maintains scientific rigor throughout
 
-Format the report with:
-- Executive Summary
-- Key Findings
-- Critical Analysis
-- Synthesized Insights
-- Hypotheses
-- Research Gaps and Questions
-- Conclusions
-- Sources
-"""
+REPORT STRUCTURE:
+1. Executive Summary
+   - Key findings (with confidence levels)
+   - Novel hypotheses generated
+   - Critical gaps identified
+   
+2. Detailed Analysis
+   - Findings with evidence and reasoning
+   - Methodologies and their limitations
+   
+3. Critical Review
+   - Strengths validated
+   - Weaknesses identified
+   - Alternative interpretations
+   
+4. Novel Insights & Hypotheses
+   - Original contributions
+   - Why they're novel
+   - How to test them
+   
+5. Research Gaps & Questions
+   - What's missing
+   - Priority questions
+   - Suggested approaches
+   
+6. Agent Collaboration Log
+   - How agents interacted
+   - Questions raised between agents
+   - How critiques shaped the analysis
+   
+7. Verification & Sources
+   - All citations
+   - Confidence assessments
+   - Reasoning traces
 
-    user_prompt = f"""Compile a comprehensive research report:
+Make it clear, verifiable, and scientifically rigorous."""
 
-RESEARCHER'S ANALYSIS:
-{researcher_analysis}
+    user_prompt = f"""Compile the comprehensive research report:
+
+RESEARCHER'S FINDINGS ({len(findings)} total, avg confidence: {researcher_confidence:.1f}%):
+{chr(10).join([f"- {f.get('finding', 'N/A')} [Conf: {f.get('confidence', 'N/A')}%]" for f in findings[:10]])}
 
 REVIEWER'S CRITIQUE:
-{critique}
+Strengths: {chr(10).join([s.get('claim', 'N/A') for s in strengths[:5]])}
+Weaknesses: {chr(10).join([w.get('claim', 'N/A') for w in weaknesses[:5]])}
+Questions Raised: {chr(10).join([f"- {q}" for q in reviewer_questions[:5]])}
 
-SYNTHESIZER'S SYNTHESIS:
-{synthesis}
+SYNTHESIZER'S CONTRIBUTIONS:
+Novel Hypotheses: {chr(10).join([h.get('statement', 'N/A') for h in hypotheses[:5]])}
+Key Insights: {chr(10).join([i.get('statement', 'N/A') for i in insights[:5]])}
+Novel Connections: {chr(10).join([f"- {nc.get('connection', 'N/A')}" for nc in novel_connections[:3]])}
 
-HYPOTHESES:
-{chr(10).join([f"- {h}" for h in hypotheses])}
+QUESTIONER'S GAP ANALYSIS:
+Critical Gaps: {chr(10).join([g.get('gap', 'N/A') for g in gaps[:5]])}
+Research Questions: {chr(10).join([q.get('question', 'N/A') for q in questions[:7]])}
 
-QUESTIONER's GAP ANALYSIS:
-{gap_analysis}
+AGENT INTERACTIONS:
+{chr(10).join([f"[{i.get('from', 'Agent')} → {i.get('to', 'Agent')}]: {i.get('content', 'N/A')}" for i in agent_interactions])}
 
-RESEARCH QUESTIONS:
-{chr(10).join([f"- {q}" for q in questions])}
+REASONING TRACES:
+Researcher: {researcher_reasoning[:300]}...
+Reviewer: {reviewer_reasoning[:300]}...
+Synthesizer: {synthesizer_reasoning[:300]}...
+Questioner: {questioner_reasoning[:300]}...
 
 SOURCES:
-{chr(10).join([f"- {s.get('source', 'Unknown')}" for s in sources[:10]])}
+{chr(10).join([f"[{i+1}] {s.get('source', 'Unknown')}" for i, s in enumerate(sources[:15])])}
 
-Please compile a comprehensive research report with proper structure, citations, and all key information from the analyses above."""
+Compile a comprehensive report that shows the full reasoning process and agent collaboration."""
 
     try:
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
-            temperature=0.3
+            temperature=0.2
         )
 
         messages = [
@@ -618,14 +900,47 @@ Please compile a comprehensive research report with proper structure, citations,
         response = llm.invoke(messages)
         report = response.content
 
-        logger.info("FORMATTER: Report compiled successfully")
+        # Create reasoning graph showing agent flow
+        reasoning_graph = {
+            "nodes": [
+                {"id": "researcher", "label": "RESEARCHER", "findings": len(findings)},
+                {"id": "reviewer", "label": "REVIEWER", "questions": len(reviewer_questions)},
+                {"id": "synthesizer", "label": "SYNTHESIZER", "hypotheses": len(hypotheses)},
+                {"id": "questioner", "label": "QUESTIONER", "gaps": len(gaps)}
+            ],
+            "edges": [
+                {"from": "researcher", "to": "reviewer", "type": "analysis"},
+                {"from": "reviewer", "to": "researcher", "type": "questions", "count": len(reviewer_questions)},
+                {"from": "reviewer", "to": "synthesizer", "type": "critique"},
+                {"from": "synthesizer", "to": "questioner", "type": "hypotheses"},
+                {"from": "questioner", "to": "all", "type": "questions"}
+            ],
+            "interactions": agent_interactions
+        }
+
+        # Calculate verification scores
+        verification_scores = {
+            "average_confidence": researcher_confidence,
+            "findings_with_evidence": len([f for f in findings if f.get('evidence')]),
+            "total_findings": len(findings),
+            "hypotheses_with_testability": len([h for h in hypotheses if h.get('testability')]),
+            "total_hypotheses": len(hypotheses),
+            "questions_with_approach": len([q for q in questions if q.get('approach')]),
+            "total_questions": len(questions),
+            "agent_interactions": len(agent_interactions),
+            "novel_contributions": len(novel_connections)
+        }
+
+        logger.info("FORMATTER: Report compiled with full verification")
 
         return {
-            "messages": [AIMessage(content="FORMATTER completed report")],
+            "messages": [AIMessage(content="FORMATTER completed comprehensive report")],
             "final_report": report,
             "formatter_status": "success",
             "workflow_status": "success",
-            "current_step": 5
+            "current_step": 5,
+            "reasoning_graph": reasoning_graph,
+            "verification_scores": verification_scores
         }
 
     except Exception as e:
@@ -678,7 +993,6 @@ def error_handler_node(state: ResearchState) -> Dict:
     }
 
 
-
 # --- Build LangGraph ---
 def create_research_graph():
     """Create and compile the research workflow graph"""
@@ -729,6 +1043,7 @@ def create_research_graph():
     )
     graph.add_edge("formatter", END)
     graph.add_edge("error_handler", END)
+
     # Compile with memory
     return graph.compile(checkpointer=memory)
 
@@ -758,11 +1073,14 @@ def run_research_analysis(config: Optional[Dict] = None):
         "synthesizer_status": "",
         "questioner_status": "",
         "formatter_status": "",
-        "error_message": ""
+        "error_message": "",
+        "agent_interactions": [],
+        "verification_scores": {}
     }
 
     print(f"\n{'=' * 70}")
-    print("MULTI-AGENT RESEARCH LAB")
+    print("ENHANCED MULTI-AGENT RESEARCH LAB")
+    print("With Reasoning Traces & Agent Collaboration")
     print(f"{'=' * 70}\n")
 
     # Run the graph
@@ -772,21 +1090,78 @@ def run_research_analysis(config: Optional[Dict] = None):
         print(f"\n{'=' * 70}")
         print("WORKFLOW COMPLETE")
         print(f"{'=' * 70}")
-        print(f"\nFINAL REPORT:\n")
+
+        # Print verification scores
+        scores = result.get("verification_scores", {})
+        print(f"\n📊 VERIFICATION METRICS:")
+        print(f"  • Average Confidence: {scores.get('average_confidence', 0):.1f}%")
+        print(f"  • Findings with Evidence: {scores.get('findings_with_evidence', 0)}/{scores.get('total_findings', 0)}")
+        print(f"  • Testable Hypotheses: {scores.get('hypotheses_with_testability', 0)}/{scores.get('total_hypotheses', 0)}")
+        print(f"  • Questions with Approach: {scores.get('questions_with_approach', 0)}/{scores.get('total_questions', 0)}")
+        print(f"  • Agent Interactions: {scores.get('agent_interactions', 0)}")
+        print(f"  • Novel Contributions: {scores.get('novel_contributions', 0)}")
+
+        print(f"\n{'=' * 70}")
+        print("FINAL REPORT")
+        print(f"{'=' * 70}\n")
         print(result["final_report"])
         print(f"\n{'=' * 70}\n")
+
+        # Print reasoning graph
+        print(f"\n🔄 AGENT COLLABORATION FLOW:")
+        graph_data = result.get("reasoning_graph", {})
+        for interaction in graph_data.get("interactions", []):
+            print(f"  [{interaction.get('from', 'Agent')}] → [{interaction.get('to', 'Agent')}]: {interaction.get('content', 'N/A')}")
+
     else:
         print(f"\n❌ WORKFLOW FAILED: {result.get('error_message', 'Unknown error')}\n")
 
     return result
 
 
+def export_reasoning_graph(state: ResearchState, output_path: str = "reasoning_graph.json"):
+    """Export the reasoning graph for visualization"""
+    import json
+
+    graph_data = state.get("reasoning_graph", {})
+
+    with open(output_path, 'w') as f:
+        json.dump(graph_data, f, indent=2)
+
+    print(f"✓ Reasoning graph exported to {output_path}")
+
+
 if __name__ == "__main__":
-    # Example usage
+    # Run analysis
     result = run_research_analysis()
 
     # Save report to file
     if result["workflow_status"] == "success":
-        with open("langgraph_research_report.txt", "w") as f:
+        with open("research_report.txt", "w") as f:
+            f.write("="*70 + "\n")
+            f.write("ENHANCED MULTI-AGENT RESEARCH REPORT\n")
+            f.write("="*70 + "\n\n")
+
+            # Add verification section
+            scores = result.get("verification_scores", {})
+            f.write("VERIFICATION METRICS\n")
+            f.write("-"*70 + "\n")
+            f.write(f"Average Confidence: {scores.get('average_confidence', 0):.1f}%\n")
+            f.write(f"Findings with Evidence: {scores.get('findings_with_evidence', 0)}/{scores.get('total_findings', 0)}\n")
+            f.write(f"Testable Hypotheses: {scores.get('hypotheses_with_testability', 0)}/{scores.get('total_hypotheses', 0)}\n")
+            f.write(f"Novel Contributions: {scores.get('novel_contributions', 0)}\n\n")
+
+            # Add agent collaboration section
+            f.write("AGENT COLLABORATION LOG\n")
+            f.write("-"*70 + "\n")
+            for interaction in result.get("agent_interactions", []):
+                f.write(f"[{interaction.get('from', 'Agent')}] → [{interaction.get('to', 'Agent')}]: {interaction.get('content', 'N/A')}\n")
+            f.write("\n")
+
+            f.write("="*70 + "\n\n")
             f.write(result["final_report"])
-        print("✓ Report saved to langgraph_research_report.txt")
+
+        print("✓ Report saved to enhanced_research_report.txt")
+
+        # Export reasoning graph
+        export_reasoning_graph(result)
