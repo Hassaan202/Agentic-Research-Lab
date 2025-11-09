@@ -237,4 +237,3 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Error deleting collection: {str(e)}")
             raise
-

@@ -18,6 +18,7 @@ except ImportError:
     # For script execution
     import sys
     from pathlib import Path
+
     sys.path.append(str(Path(__file__).parent))
     from rag_pipeline import RAGPipeline
 
@@ -32,18 +33,18 @@ logger = logging.getLogger(__name__)
 
 class BaseAgent:
     """Base class for all research agents."""
-    
+
     def __init__(
-        self,
-        name: str,
-        role: str,
-        rag_pipeline: RAGPipeline,
-        temperature: float = 0.3,
-        max_retrieval_docs: int = 8
+            self,
+            name: str,
+            role: str,
+            rag_pipeline: RAGPipeline,
+            temperature: float = 0.3,
+            max_retrieval_docs: int = 8
     ):
         """
         Initialize the base agent.
-        
+
         Args:
             name: Agent name
             role: Agent's role description
@@ -56,12 +57,12 @@ class BaseAgent:
         self.rag_pipeline = rag_pipeline
         self.temperature = temperature
         self.max_retrieval_docs = max_retrieval_docs
-        
+
         # Check for API key
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError("GOOGLE_API_KEY not found in environment variables")
-        
+
         # Initialize LLM with lower temperature for accuracy
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
@@ -69,35 +70,35 @@ class BaseAgent:
             temperature=temperature,
             convert_system_message_to_human=True
         )
-        
+
         logger.info(f"Initialized {self.name} agent (temperature={temperature})")
-    
+
     def retrieve_context(self, query: str, k: Optional[int] = None) -> Dict:
         """
         Retrieve relevant context using RAG pipeline.
-        
+
         Args:
             query: Search query
             k: Number of documents to retrieve
-            
+
         Returns:
             Dictionary with context and sources
         """
         if k is None:
             k = self.max_retrieval_docs
-        
+
         result = self.rag_pipeline.answer_question(query, k=k, return_sources=True)
         return result
-    
+
     def process(self, input_data: Dict, query: str) -> Dict:
         """
         Process input data and generate output.
         Must be implemented by subclass.
-        
+
         Args:
             input_data: Input from previous agent
             query: Original research query
-            
+
         Returns:
             Dictionary with agent's output
         """
@@ -106,7 +107,7 @@ class BaseAgent:
 
 class ResearcherAgent(BaseAgent):
     """Agent that analyzes research papers and extracts key findings."""
-    
+
     def __init__(self, rag_pipeline: RAGPipeline, temperature: float = 0.2):
         super().__init__(
             name="RESEARCHER",
@@ -115,24 +116,24 @@ class ResearcherAgent(BaseAgent):
             temperature=temperature,
             max_retrieval_docs=10
         )
-    
+
     def process(self, input_data: Dict, query: str) -> Dict:
         """
         Analyze papers and extract key findings.
-        
+
         Args:
             input_data: Initial query or research topic
             query: Research query/topic
-            
+
         Returns:
             Dictionary with analysis findings
         """
         logger.info(f"{self.name}: Starting analysis of research papers...")
-        
+
         # Retrieve relevant documents
         retrieval_query = query if isinstance(input_data, str) else input_data.get('query', query)
         context_result = self.retrieve_context(retrieval_query, k=10)
-        
+
         if not context_result.get('sources'):
             return {
                 "agent": self.name,
@@ -141,11 +142,11 @@ class ResearcherAgent(BaseAgent):
                 "findings": [],
                 "sources": []
             }
-        
+
         # Create analysis prompt
         context_text = context_result['answer']
         sources = context_result.get('sources', [])
-        
+
         system_prompt = """You are a meticulous research analyst. Your task is to analyze research papers and extract key findings, methodologies, and conclusions.
 
 CRITICAL RULES:
@@ -162,7 +163,7 @@ Format your analysis clearly with sections for:
 - Conclusions
 - Limitations
 """
-        
+
         user_prompt = f"""Analyze the following research papers related to: {query}
 
 CONTEXT FROM DOCUMENTS:
@@ -186,9 +187,9 @@ Remember: Only use information from the provided context. Cite sources for each 
             ]
             response = self.llm.invoke(messages)
             analysis = response.content if hasattr(response, 'content') else str(response)
-            
+
             logger.info(f"{self.name}: Analysis complete")
-            
+
             return {
                 "agent": self.name,
                 "status": "success",
@@ -206,18 +207,19 @@ Remember: Only use information from the provided context. Cite sources for each 
                 "findings": [],
                 "sources": []
             }
-    
+
     def _extract_findings(self, analysis: str) -> List[str]:
         """Extract key findings from analysis text."""
         # Simple extraction - can be enhanced
         lines = analysis.split('\n')
-        findings = [line.strip() for line in lines if line.strip() and (line.strip().startswith('-') or line.strip()[0].isdigit())]
+        findings = [line.strip() for line in lines if
+                    line.strip() and (line.strip().startswith('-') or line.strip()[0].isdigit())]
         return findings[:10]  # Return top 10 findings
 
 
 class ReviewerAgent(BaseAgent):
     """Agent that critiques findings and identifies strengths/weaknesses."""
-    
+
     def __init__(self, rag_pipeline: RAGPipeline, temperature: float = 0.3):
         super().__init__(
             name="REVIEWER",
@@ -226,20 +228,20 @@ class ReviewerAgent(BaseAgent):
             temperature=temperature,
             max_retrieval_docs=8
         )
-    
+
     def process(self, input_data: Dict, query: str) -> Dict:
         """
         Critique the researcher's findings.
-        
+
         Args:
             input_data: Output from ResearcherAgent
             query: Original research query
-            
+
         Returns:
             Dictionary with critique
         """
         logger.info(f"{self.name}: Starting critique of findings...")
-        
+
         if input_data.get('status') != 'success':
             return {
                 "agent": self.name,
@@ -247,15 +249,15 @@ class ReviewerAgent(BaseAgent):
                 "message": "Invalid input from previous agent",
                 "critique": ""
             }
-        
+
         researcher_analysis = input_data.get('analysis', '')
         findings = input_data.get('findings', [])
         sources = input_data.get('sources', [])
-        
+
         # Retrieve additional context for critique
         critique_query = f"methodology limitations weaknesses {query}"
         context_result = self.retrieve_context(critique_query, k=6)
-        
+
         system_prompt = """You are a critical research reviewer. Your task is to evaluate research findings, identify strengths, weaknesses, and potential biases.
 
 CRITICAL RULES:
@@ -273,7 +275,7 @@ Format your critique with:
 - Potential Biases
 - Gaps or Missing Information
 """
-        
+
         user_prompt = f"""Review and critique the following research analysis related to: {query}
 
 RESEARCHER'S ANALYSIS:
@@ -301,9 +303,9 @@ Remember: Base your critique on the actual content. Do not invent criticisms."""
             ]
             response = self.llm.invoke(messages)
             critique = response.content if hasattr(response, 'content') else str(response)
-            
+
             logger.info(f"{self.name}: Critique complete")
-            
+
             return {
                 "agent": self.name,
                 "status": "success",
@@ -321,7 +323,7 @@ Remember: Base your critique on the actual content. Do not invent criticisms."""
                 "message": str(e),
                 "critique": ""
             }
-    
+
     def _extract_section(self, text: str, section: str) -> List[str]:
         """Extract a specific section from critique text."""
         lines = text.split('\n')
@@ -340,7 +342,7 @@ Remember: Base your critique on the actual content. Do not invent criticisms."""
 
 class SynthesizerAgent(BaseAgent):
     """Agent that synthesizes insights and generates hypotheses."""
-    
+
     def __init__(self, rag_pipeline: RAGPipeline, temperature: float = 0.4):
         super().__init__(
             name="SYNTHESIZER",
@@ -349,20 +351,20 @@ class SynthesizerAgent(BaseAgent):
             temperature=temperature,
             max_retrieval_docs=8
         )
-    
+
     def process(self, input_data: Dict, query: str) -> Dict:
         """
         Synthesize findings and generate hypotheses.
-        
+
         Args:
             input_data: Output from ReviewerAgent
             query: Original research query
-            
+
         Returns:
             Dictionary with synthesis and hypotheses
         """
         logger.info(f"{self.name}: Starting synthesis...")
-        
+
         if input_data.get('status') != 'success':
             return {
                 "agent": self.name,
@@ -371,16 +373,16 @@ class SynthesizerAgent(BaseAgent):
                 "synthesis": "",
                 "hypotheses": []
             }
-        
+
         researcher_analysis = input_data.get('researcher_analysis', '')
         critique = input_data.get('critique', '')
         strengths = input_data.get('strengths', [])
         weaknesses = input_data.get('weaknesses', [])
-        
+
         # Retrieve context for synthesis
         synthesis_query = f"hypotheses research questions future work {query}"
         context_result = self.retrieve_context(synthesis_query, k=6)
-        
+
         system_prompt = """You are a research synthesizer. Your task is to combine findings and critiques to generate new insights and testable hypotheses.
 
 CRITICAL RULES:
@@ -398,7 +400,7 @@ Format your synthesis with:
 - Testable Hypotheses
 - Research Directions
 """
-        
+
         user_prompt = f"""Synthesize the following research analysis and critique related to: {query}
 
 RESEARCHER'S FINDINGS:
@@ -432,9 +434,9 @@ Remember: Hypotheses must be grounded in the actual findings. Be specific and te
             ]
             response = self.llm.invoke(messages)
             synthesis = response.content if hasattr(response, 'content') else str(response)
-            
+
             logger.info(f"{self.name}: Synthesis complete")
-            
+
             return {
                 "agent": self.name,
                 "status": "success",
@@ -453,7 +455,7 @@ Remember: Hypotheses must be grounded in the actual findings. Be specific and te
                 "synthesis": "",
                 "hypotheses": []
             }
-    
+
     def _extract_hypotheses(self, synthesis: str) -> List[str]:
         """Extract hypotheses from synthesis text."""
         hypotheses = []
@@ -463,13 +465,14 @@ Remember: Hypotheses must be grounded in the actual findings. Be specific and te
                 if line.strip() and len(line.strip()) > 20:
                     hypotheses.append(line.strip())
         return hypotheses[:5]
-    
+
     def _extract_insights(self, synthesis: str) -> List[str]:
         """Extract key insights from synthesis text."""
         insights = []
         lines = synthesis.split('\n')
         for line in lines:
-            if ('insight' in line.lower() or 'pattern' in line.lower() or 'relationship' in line.lower()) and line.strip():
+            if (
+                    'insight' in line.lower() or 'pattern' in line.lower() or 'relationship' in line.lower()) and line.strip():
                 if len(line.strip()) > 30:
                     insights.append(line.strip())
         return insights[:5]
@@ -477,7 +480,7 @@ Remember: Hypotheses must be grounded in the actual findings. Be specific and te
 
 class QuestionerAgent(BaseAgent):
     """Agent that identifies gaps and generates follow-up questions."""
-    
+
     def __init__(self, rag_pipeline: RAGPipeline, temperature: float = 0.4):
         super().__init__(
             name="QUESTIONER",
@@ -486,20 +489,20 @@ class QuestionerAgent(BaseAgent):
             temperature=temperature,
             max_retrieval_docs=6
         )
-    
+
     def process(self, input_data: Dict, query: str) -> Dict:
         """
         Identify gaps and generate questions.
-        
+
         Args:
             input_data: Output from SynthesizerAgent
             query: Original research query
-            
+
         Returns:
             Dictionary with gaps and questions
         """
         logger.info(f"{self.name}: Identifying gaps and generating questions...")
-        
+
         if input_data.get('status') != 'success':
             return {
                 "agent": self.name,
@@ -508,17 +511,17 @@ class QuestionerAgent(BaseAgent):
                 "gaps": [],
                 "questions": []
             }
-        
+
         synthesis = input_data.get('synthesis', '')
         hypotheses = input_data.get('hypotheses', [])
         insights = input_data.get('insights', [])
         researcher_analysis = input_data.get('researcher_analysis', '')
         critique = input_data.get('critique', '')
-        
+
         # Retrieve context for gap identification
         gap_query = f"research gaps limitations future work {query}"
         context_result = self.retrieve_context(gap_query, k=5)
-        
+
         system_prompt = """You are a research questioner. Your task is to identify knowledge gaps and generate critical follow-up questions.
 
 CRITICAL RULES:
@@ -534,7 +537,7 @@ Format your output with:
 - Critical Questions
 - Research Priorities
 """
-        
+
         user_prompt = f"""Identify gaps and generate questions based on the following research analysis related to: {query}
 
 SYNTHESIS AND HYPOTHESES:
@@ -571,9 +574,9 @@ Remember: Questions should be specific and answerable. Base gaps on actual limit
             ]
             response = self.llm.invoke(messages)
             gap_analysis = response.content if hasattr(response, 'content') else str(response)
-            
+
             logger.info(f"{self.name}: Gap analysis complete")
-            
+
             return {
                 "agent": self.name,
                 "status": "success",
@@ -592,7 +595,7 @@ Remember: Questions should be specific and answerable. Base gaps on actual limit
                 "gaps": [],
                 "questions": []
             }
-    
+
     def _extract_gaps(self, text: str) -> List[str]:
         """Extract knowledge gaps from text."""
         gaps = []
@@ -601,7 +604,7 @@ Remember: Questions should be specific and answerable. Base gaps on actual limit
             if 'gap' in line.lower() and line.strip() and len(line.strip()) > 20:
                 gaps.append(line.strip())
         return gaps[:5]
-    
+
     def _extract_questions(self, text: str) -> List[str]:
         """Extract questions from text."""
         questions = []
@@ -614,7 +617,7 @@ Remember: Questions should be specific and answerable. Base gaps on actual limit
 
 class FormatterAgent(BaseAgent):
     """Agent that compiles the final research report."""
-    
+
     def __init__(self, rag_pipeline: RAGPipeline, temperature: float = 0.3):
         super().__init__(
             name="FORMATTER",
@@ -623,26 +626,26 @@ class FormatterAgent(BaseAgent):
             temperature=temperature,
             max_retrieval_docs=0  # Formatter doesn't need to retrieve new docs
         )
-    
+
     def process(self, input_data: Dict, query: str) -> Dict:
         """
         Compile final report from all agent outputs.
-        
+
         Args:
             input_data: Complete workflow data from all agents
             query: Original research query
-            
+
         Returns:
             Dictionary with formatted report
         """
         logger.info(f"{self.name}: Compiling final report...")
-        
+
         # Extract data from all agents
         researcher_data = input_data.get('researcher', {})
         reviewer_data = input_data.get('reviewer', {})
         synthesizer_data = input_data.get('synthesizer', {})
         questioner_data = input_data.get('questioner', {})
-        
+
         system_prompt = """You are a research report formatter. Your task is to compile a comprehensive, well-structured research report from multiple agent analyses.
 
 CRITICAL RULES:
@@ -664,7 +667,7 @@ Format the report with:
 - Conclusions
 - Sources
 """
-        
+
         user_prompt = f"""Compile a comprehensive research report for: {query}
 
 RESEARCHER'S ANALYSIS:
@@ -697,9 +700,9 @@ Please compile a comprehensive research report with proper structure, citations,
             ]
             response = self.llm.invoke(messages)
             report = response.content if hasattr(response, 'content') else str(response)
-            
+
             logger.info(f"{self.name}: Report compiled")
-            
+
             return {
                 "agent": self.name,
                 "status": "success",
@@ -719,4 +722,3 @@ Please compile a comprehensive research report with proper structure, citations,
                 "message": str(e),
                 "report": ""
             }
-
