@@ -611,25 +611,76 @@ def formatter_node(state: ResearchState) -> Dict:
     questions = state["questioner_questions"]
     sources = state["researcher_sources"]
 
-    system_prompt = """You are a research report compiler creating a comprehensive, well-structured report.
+    system_prompt = """You are a professional research report formatter creating a comprehensive, well-structured, and visually appealing research report.
 
 YOUR TASK:
-Compile all the research findings, review, hypotheses, and questions into a clear, professional report.
+Compile all the research findings, review, hypotheses, and questions into a clear, professional, and beautifully formatted report using Markdown formatting.
 
-REPORT STRUCTURE:
-1. Executive Summary
-2. Key Findings (with citations)
-3. Critical Review (strengths and weaknesses)
-4. Novel Hypotheses
-5. Research Questions
-6. Sources
+CRITICAL FORMATTING REQUIREMENTS:
 
-Make the report clear, well-organized, and professionally formatted."""
+1. **HEADINGS**: Use Markdown heading levels with bold formatting:
+   - Main title: Use **bold** for the main report title
+   - Section headings: Use ## for major sections (## Section Title)
+   - Subsections: Use ### for subsections (### Subsection Title)
+   - All headings should be bold and clearly separated with blank lines
 
-    user_prompt = f"""Compile a comprehensive research report from:
+2. **BULLET POINTS**: Use proper Markdown bullet points:
+   - Use "- " or "* " for bullet points
+   - Use "  - " for nested bullets (indented)
+   - Ensure consistent formatting throughout
+
+3. **BOLD AND EMPHASIS**:
+   - Use **bold** for important terms, key concepts, and emphasis
+   - Use *italic* for citations and references
+   - Bold section titles within text when referencing them
+
+4. **STRUCTURE**: Follow this exact structure:
+   - **Title**: Research Report: [Topic]
+   - ## 1. Executive Summary (2-3 paragraphs summarizing key points)
+   - ## 2. Key Findings (numbered or bulleted list with bold key terms)
+   - ## 3. Critical Review
+     - ### 3.1. Strengths (bulleted list)
+     - ### 3.2. Weaknesses (bulleted list)
+   - ## 4. Novel Hypotheses (numbered or bulleted list)
+   - ## 5. Research Questions (numbered or bulleted list)
+   - ## 6. Sources (numbered list with proper citations)
+
+5. **CITATIONS**: Format citations as:
+   - In-text: Use [[1]], [[2]], etc. for citations
+   - Sources section: Use [1], [2], etc. with full source information
+
+6. **PROFESSIONAL FORMATTING**:
+   - Use proper paragraph spacing (blank line between paragraphs)
+   - Use consistent indentation
+   - Ensure readability and visual hierarchy
+   - Use bold for key terms and concepts throughout
+   - Make important findings stand out with bold text
+
+7. **CONTENT ORGANIZATION**:
+   - Executive Summary should be comprehensive but concise
+   - Key Findings should highlight the most important discoveries
+   - Critical Review should be balanced and insightful
+   - Hypotheses should be clearly stated and actionable
+   - Research Questions should be specific and researchable
+
+FORMATTING EXAMPLES:
+- Section: ## 2. Key Findings
+- Bullet: - **Confidence Score Integration:** The integration of confidence scores significantly enhances... [[2]]
+- Subsection: ### 3.1. Strengths
+- Citation: [[1]], [[2]], etc.
+
+IMPORTANT: 
+- Use Markdown formatting throughout
+- Make headings bold and clear
+- Use bullet points for lists
+- Bold important terms and concepts
+- Ensure professional, publication-ready formatting
+- Maintain consistency in formatting style"""
+
+    user_prompt = f"""Compile a comprehensive, professionally formatted research report using Markdown formatting with bold headings, proper bullet points, and clear structure.
 
 KEY FINDINGS ({len(findings)} total):
-{chr(10).join([f"- {f.get('finding', 'N/A')} [{f.get('citation', 'N/A')}]" for f in findings])}
+{chr(10).join([f"- {f.get('finding', 'N/A')} [Citation: {f.get('citation', 'N/A')}]" for f in findings])}
 
 STRENGTHS ({len(strengths)} total):
 {chr(10).join([f"- {s}" for s in strengths])}
@@ -646,12 +697,33 @@ RESEARCH QUESTIONS ({len(questions)} total):
 SOURCES ({len(sources)} total):
 {chr(10).join([f"[{i+1}] {s.get('source', 'Unknown')} ({s.get('type', 'N/A')})" for i, s in enumerate(sources[:15])])}
 
-Create a well-structured, comprehensive research report."""
+ADDITIONAL CONTEXT:
+- Researcher Analysis: {state.get('researcher_analysis', 'N/A')[:500]}...
+- Reviewer Critique: {state.get('reviewer_critique', 'N/A')[:500]}...
+- Synthesizer Synthesis: {state.get('synthesizer_synthesis', 'N/A')[:500]}...
+- Questioner Gap Analysis: {state.get('questioner_gap_analysis', 'N/A')[:500]}...
+
+INSTRUCTIONS:
+1. Create a professional research report with the title: **Research Report: [Generate appropriate title based on findings]**
+2. Format all sections with proper Markdown headings (## for sections, ### for subsections)
+3. Use **bold** for key terms, important concepts, and section references
+4. Use proper bullet points (-) for all lists
+5. Format citations as [[1]], [[2]], etc. in the text
+6. Create a comprehensive Executive Summary (2-3 paragraphs)
+7. Organize Key Findings with bold key terms and proper citations
+8. Separate Strengths and Weaknesses into subsections (3.1 and 3.2)
+9. Number or bullet all Hypotheses and Research Questions
+10. Format Sources section as a numbered list [1], [2], etc.
+11. Ensure the report is publication-ready with professional formatting
+12. Make the report visually appealing with proper spacing and hierarchy
+
+Create the report now with proper Markdown formatting, bold headings, and professional structure."""
 
     try:
+        # Use slightly higher temperature for more creative formatting
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
-            temperature=0.2
+            temperature=0.3
         )
 
         messages = [
