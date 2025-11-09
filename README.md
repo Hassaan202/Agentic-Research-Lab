@@ -1,12 +1,33 @@
-# Research Agent – Agentic AI for Accelerated Research
+# Agentic Research Lab – Agentic AI for Accelerated Research
 
 A multi-agent AI system that analyzes research papers through specialized agents working together to extract insights, critique findings, synthesize hypotheses, identify gaps, and generate comprehensive research reports.
 
-## 🎯 Overview
+## Overview
 
 This system implements a collaborative multi-agent workflow where specialized AI agents work together to analyze research content, generating insights and explaining their reasoning in a clear, verifiable way. Each agent has a distinct role and contributes to a comprehensive research analysis.
 
-## 🔄 Workflow
+##  Core Functionality 
+
+The Research Agent automates structured literature analysis so you can move from raw PDFs to actionable research intelligence in minutes.
+
+- What it does: Ingests your papers, retrieves the most relevant passages, then runs a chained set of specialized agents (extract → critique → synthesize → gap detect → format) to produce a clean, citation-grounded report.
+- Why it’s necessary: Manual literature reviews are slow, inconsistent, and prone to missed connections. Information overload makes it hard to see patterns, limitations, and promising hypothesis space early.
+- Problems it solves:
+  - Time-consuming extraction of key methods/findings
+  - Shallow or biased critique of prior work
+  - Fragmented insights across multiple papers
+  - Missed gaps and weakly justified research questions
+  - Hallucinated summaries without source traceability
+- How it works: Retrieval-Augmented Generation (RAG) anchors every agent’s output in your uploaded documents. Each agent receives curated context chunks plus prior stage outputs, enforces source citation, and passes structured data forward. The final formatter assembles an executive summary, layered analysis, hypotheses, and prioritized research questions—fully traceable back to the original papers.
+
+Result: Faster, reliable, and explainable research synthesis that accelerates ideation and reduces review fatigue.
+
+## Documentation
+
+- Setup Guide: docs/SETUP.md
+- Technical Implementation Guide: docs/TECHNICAL_OVERVIEW.md
+
+## Workflow
 
 ```
 START
@@ -24,7 +45,7 @@ START
 END
 ```
 
-## 🤖 Agents
+## Agents
 
 ### 1. RESEARCHER Agent
 - **Role**: Analyzes research papers and extracts key findings
@@ -67,105 +88,7 @@ END
   - Maintains accuracy with proper citations
   - Creates professional, readable format
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-1. Python 3.8+
-2. Google API Key (for Gemini models)
-3. Documents in `uploaded_documents/` folder
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd "new hackathon"
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Create a `.env` file with your Google API key:
-```
-GOOGLE_API_KEY=your_api_key_here
-```
-
-4. Process your documents (if not already done):
-```bash
-python src/document_processor.py
-```
-
-### Usage
-
-#### Option 1: Command Line
-
-Run the multi-agent system with a research query:
-
-```bash
-python src/multi_agent_system.py --query "What are the latest advances in transformer architectures?"
-```
-
-Options:
-- `--query`: Research query or topic (required)
-- `--vector-db`: Path to vector database (default: "vector_db")
-- `--collection`: ChromaDB collection name (default: "research_documents")
-- `--model`: LLM model name (default: "gemini-2.5-flash")
-- `--temperature`: LLM temperature (default: 0.3)
-- `--output`: Output file path for report (default: "research_report.txt")
-- `--no-save`: Don't save report to file
-
-#### Option 2: Python Script
-
-```python
-from src.multi_agent_system import MultiAgentResearchSystem
-
-# Initialize system
-system = MultiAgentResearchSystem(
-    vector_db_path="vector_db",
-    collection_name="research_documents"
-)
-
-# Run research workflow
-workflow_data = system.run_research_workflow(
-    query="What are the latest advances in transformer architectures?",
-    verbose=True
-)
-
-# Save report
-if workflow_data.get("status") == "success":
-    system.save_report(workflow_data, "research_report.txt")
-    print(workflow_data.get("report"))
-```
-
-#### Option 3: Using the Example Script
-
-```bash
-python example_multi_agent.py
-```
-
-## 📁 Project Structure
-
-```
-.
-├── src/
-│   ├── __init__.py
-│   ├── document_loader.py      # Document loading and chunking
-│   ├── document_processor.py   # Document processing orchestration
-│   ├── vector_store.py         # Vector database management
-│   ├── rag_pipeline.py         # RAG pipeline for document retrieval
-│   ├── agents.py               # Individual agent implementations
-│   └── multi_agent_system.py   # Multi-agent orchestrator
-├── uploaded_documents/         # Research papers (PDFs, etc.)
-├── vector_db/                  # Vector database storage
-├── requirements.txt            # Python dependencies
-├── example_multi_agent.py      # Example usage script
-└── README.md                   # This file
-```
-
-## 🔍 Key Features
+## Key Features
 
 ### 1. Multi-Agent Collaboration
 - Specialized agents with distinct roles
@@ -191,41 +114,7 @@ python example_multi_agent.py
 - Proper citations and source references
 - All agent outputs included
 
-## 🛠️ Technical Details
-
-### Technology Stack
-- **LLM**: Google Gemini 2.5 Flash
-- **Embeddings**: Google Generative AI Embeddings
-- **Vector Database**: ChromaDB
-- **Framework**: LangChain
-- **Language**: Python 3.8+
-
-### Agent Configuration
-- **RESEARCHER**: Temperature 0.2 (high accuracy)
-- **REVIEWER**: Temperature 0.3 (balanced)
-- **SYNTHESIZER**: Temperature 0.4 (creative synthesis)
-- **QUESTIONER**: Temperature 0.4 (creative questioning)
-- **FORMATTER**: Temperature 0.3 (clear formatting)
-
-### RAG Integration
-- All agents use the RAG pipeline for document retrieval
-- Retrieval augmented generation ensures accuracy
-- Source tracking and citation throughout
-
-## 📊 Output Format
-
-The system generates a comprehensive research report including:
-
-1. **Executive Summary**
-2. **Key Findings** (from RESEARCHER)
-3. **Critical Analysis** (from REVIEWER)
-4. **Synthesized Insights** (from SYNTHESIZER)
-5. **Hypotheses** (from SYNTHESIZER)
-6. **Research Gaps and Questions** (from QUESTIONER)
-7. **Conclusions**
-8. **Sources** (with citations)
-
-## 🎯 Use Cases
+## Use Cases
 
 - Research paper analysis
 - Literature reviews
@@ -234,29 +123,18 @@ The system generates a comprehensive research report including:
 - Academic research assistance
 - Knowledge synthesis
 
-## 🔒 Accuracy Guarantees
-
-- **No Hallucination**: Agents are explicitly instructed to only use information from provided documents
-- **Source Citation**: All findings include source references
-- **Verification**: Each agent's output is based on retrieved document context
-- **Temperature Control**: Lower temperatures for factual accuracy
-
-## 📝 Notes
+## Notes
 
 - Ensure documents are processed before running the multi-agent system
 - The system works best with 5-20 research papers
 - Processing time depends on document size and number of papers
 - All agents share the same RAG pipeline for consistency
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
+## License
 
 [Add your license here]
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Built for VC Big Bets Hackathon
 - Uses Google Gemini for LLM capabilities
